@@ -25,6 +25,49 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+---
+
+## Telegram + Cursor bridge
+
+This project can **trigger a Cursor Background Agent when you receive a new Telegram message**. The agent is instructed to open Telegram Web in the browser (via Web MCP Chrome) and reply. Useful when you use Cursor + browser MCP + Telegram Web and want to react to messages (e.g. from your phone via Chrome Remote Desktop).
+
+### Flow
+
+1. **Telegram bot** receives a message (DM to the bot, or in a group where the bot is added).
+2. The app calls **cursor-background-agent-api** to create a Background Composer task.
+3. The **Cursor agent** runs with a prompt to open Telegram Web, find the conversation, and send a reply.
+
+### Prerequisites
+
+- **Telegram bot**: Create a bot with [@BotFather](https://t.me/BotFather), get `TELEGRAM_BOT_TOKEN`.
+- **Cursor session token**: For [cursor-background-agent-api](https://github.com/mjdierkes/cursor-background-agent-api). In Cursor, you can get the session cookie (e.g. `WorkosCursorSessionToken`) or use the project’s instructions to obtain `CURSOR_SESSION_TOKEN`.
+- **Cursor** running with **Web MCP Chrome** (browser) and, if you use it, [mcp-telegram](https://github.com/sparfenyuk/mcp-telegram) for read-only Telegram data. The agent will use the browser to open Telegram Web and type the reply.
+
+### Setup
+
+1. Copy `.env.example` to `.env` and set:
+   - `TELEGRAM_BOT_TOKEN` – from @BotFather
+   - `CURSOR_SESSION_TOKEN` – from Cursor / cursor-background-agent-api docs
+2. Optional: `TELEGRAM_TRIGGER_ON_MENTION=true` – only trigger when the bot is @mentioned (e.g. in groups).
+3. Optional: `CURSOR_REPOSITORY_URL` – Git repo URL for the agent’s workspace.
+
+### Run
+
+```bash
+npm install
+npm run start:dev
+```
+
+- The Telegram bot starts with the app. When someone messages the bot (or mentions it), the app triggers the Cursor agent.
+- **Manual trigger**: `POST http://localhost:3000/telegram-cursor/trigger` with optional body:  
+  `{ "messageContext": "From @user: hello", "chatInfo": "Chat name" }`.
+
+### Getting the Cursor session token
+
+To obtain `CURSOR_SESSION_TOKEN`, see [cursor-background-agent-api](https://github.com/mjdierkes/cursor-background-agent-api) (e.g. from Cursor’s cookies or their docs). The app calls Cursor’s Background Composer API directly with this token.
+
+---
+
 ## Project setup
 
 ```bash
