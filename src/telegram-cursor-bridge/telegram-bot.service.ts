@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Telegraf, Context } from 'telegraf';
-import { CursorAgentService } from './cursor-agent.service';
+import { ReplyWithContextService } from './reply-with-context.service';
 
 const TRIGGER_ONLY_WHEN_MENTIONED = process.env.TELEGRAM_TRIGGER_ON_MENTION === 'true';
 
@@ -8,7 +8,7 @@ const TRIGGER_ONLY_WHEN_MENTIONED = process.env.TELEGRAM_TRIGGER_ON_MENTION === 
 export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private bot: Telegraf<Context> | null = null;
 
-  constructor(private readonly cursorAgent: CursorAgentService) {}
+  constructor(private readonly replyWithContext: ReplyWithContextService) {}
 
   async onModuleInit(): Promise<void> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -18,12 +18,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
-    if (!this.cursorAgent.isConfigured()) {
-      console.warn(
-        '[TelegramCursorBridge] CURSOR_SESSION_TOKEN not set; agent trigger will fail.',
-      );
-    }
-
     this.bot = new Telegraf(token);
 
     this.bot.on('message', async (ctx) => {
@@ -34,8 +28,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         const from = ctx.from;
         const username = from?.username ? `@${from.username}` : from?.first_name ?? 'Unknown';
         const chat = ctx.chat;
-        const chatTitle =
-          chat && 'title' in chat ? chat.title : `Chat ${chat?.id ?? '?'}`;
 
         // In groups: if TELEGRAM_TRIGGER_ON_MENTION=true, only react when the bot is @mentioned.
         // In private chat: always react to every message.
@@ -47,23 +39,12 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           if (!mentioned) return;
         }
 
-        const messageContext = `From ${username}: ${text}`;
-        const chatInfo = `${chatTitle} (id: ${chat?.id})`;
-
-        const result = await this.cursorAgent.triggerTelegramReplyTask({
-          messageContext,
-          chatInfo,
-        });
-
-        if (result.ok) {
-          await ctx.reply('Cursor agent triggered. I’ll reply in Telegram Web shortly.').catch(() => {});
-        } else {
-          await ctx
-            .reply(
-              `Failed to trigger Cursor agent: ${result.error ?? 'unknown'}`,
-            )
-            .catch(() => {});
-        }
+        const replyText = await this.replyWithContext.getReplyForMessage(
+          chat?.id ?? 0,
+          text,
+          username,
+        );
+        await ctx.reply(replyText).catch(() => {});
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[TelegramCursorBridge] Error handling message:', msg);
@@ -77,10 +58,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       await this.bot.launch();
       console.log('[TelegramCursorBridge] Telegram bot started.');
     } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[TelegramCursorBridge] Failed to start bot:', msg);
-    this.bot = null;
-  }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[TelegramCursorBridge] Failed to start bot:', msg);
+      this.bot = null;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

@@ -27,29 +27,31 @@
 
 ---
 
-## Telegram + Cursor bridge
+## Telegram + Local LLM bridge (with optional Telegram MCP)
 
-This project can **trigger a Cursor Background Agent when you receive a new Telegram message**. The agent is instructed to open Telegram Web in the browser (via Web MCP Chrome) and reply. Useful when you use Cursor + browser MCP + Telegram Web and want to react to messages (e.g. from your phone via Chrome Remote Desktop).
+This project runs a **Telegram bot** that replies using a **local LLM** (Ollama). Optionally it uses a **Telegram MCP server** to fetch full chat history so the model has context of the conversation, not just the last message.
 
 ### Flow
 
-1. **Telegram bot** receives a message (DM to the bot, or in a group where the bot is added).
-2. The app calls **cursor-background-agent-api** to create a Background Composer task.
-3. The **Cursor agent** runs with a prompt to open Telegram Web, find the conversation, and send a reply.
+1. **Telegram bot** receives a message (DM or in a group).
+2. The app optionally fetches **chat history** via a Telegram MCP server (e.g. [chigwell/telegram-mcp](https://github.com/chigwell/telegram-mcp)).
+3. The app sends **history + new message** to **Ollama** (or compatible API).
+4. The bot sends the model’s **reply** back to Telegram.
 
 ### Prerequisites
 
 - **Telegram bot**: Create a bot with [@BotFather](https://t.me/BotFather), get `TELEGRAM_BOT_TOKEN`.
-- **Cursor session token**: For [cursor-background-agent-api](https://github.com/mjdierkes/cursor-background-agent-api). In Cursor, you can get the session cookie (e.g. `WorkosCursorSessionToken`) or use the project’s instructions to obtain `CURSOR_SESSION_TOKEN`.
-- **Cursor** running with **Web MCP Chrome** (browser) and, if you use it, [mcp-telegram](https://github.com/sparfenyuk/mcp-telegram) for read-only Telegram data. The agent will use the browser to open Telegram Web and type the reply.
+- **Ollama**: Install [Ollama](https://ollama.com/) and run a model (e.g. `ollama run llama3.2`). The app calls `OLLAMA_BASE_URL` (default `http://localhost:11434`) and `OLLAMA_MODEL`.
+- **Telegram MCP (optional)**: For chat history context, install and configure a Telegram MCP server that uses a **user** Telegram account (e.g. [chigwell/telegram-mcp](https://github.com/chigwell/telegram-mcp)): clone repo, run `uv sync`, generate session string (e.g. `uv run session_string_generator.py`), set `.env` with `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION_STRING`. The NestJS app **spawns** this MCP server as a subprocess (via `TELEGRAM_MCP_PATH` or `TELEGRAM_MCP_COMMAND` + `TELEGRAM_MCP_ARGS`); you do not need to run it manually. The user account must be in the same chats as the bot so `get_history(chat_id)` returns the right messages.
 
 ### Setup
 
 1. Copy `.env.example` to `.env` and set:
    - `TELEGRAM_BOT_TOKEN` – from @BotFather
-   - `CURSOR_SESSION_TOKEN` – from Cursor / cursor-background-agent-api docs
-2. Optional: `TELEGRAM_TRIGGER_ON_MENTION=true` – only trigger when the bot is @mentioned (e.g. in groups).
-3. Optional: `CURSOR_REPOSITORY_URL` – Git repo URL for the agent’s workspace.
+   - `OLLAMA_BASE_URL` (default `http://localhost:11434`), `OLLAMA_MODEL` (e.g. `llama3.2`)
+   - Optionally `TELEGRAM_MCP_PATH` – path to the telegram-mcp repo (app runs `uv --directory <path> run main.py`)
+2. Optional: `TELEGRAM_TRIGGER_ON_MENTION=true` – only reply when the bot is @mentioned in groups.
+3. Optional: `CHAT_HISTORY_LIMIT` – number of recent messages to pass to the model (default 40).
 
 ### Run
 
@@ -58,13 +60,10 @@ npm install
 npm run start:dev
 ```
 
-- The Telegram bot starts with the app. When someone messages the bot (or mentions it), the app triggers the Cursor agent.
-- **Manual trigger**: `POST http://localhost:3000/telegram-cursor/trigger` with optional body:  
-  `{ "messageContext": "From @user: hello", "chatInfo": "Chat name" }`.
-
-### Getting the Cursor session token
-
-To obtain `CURSOR_SESSION_TOKEN`, see [cursor-background-agent-api](https://github.com/mjdierkes/cursor-background-agent-api) (e.g. from Cursor’s cookies or their docs). The app calls Cursor’s Background Composer API directly with this token.
+- The Telegram bot starts with the app. When someone messages the bot (or mentions it), the app gets a reply from the local model and sends it back.
+- **Manual trigger**: `POST http://localhost:3000/telegram-cursor/trigger` with body:  
+  `{ "messageContext": "user message", "chatId"?: number, "username"?: string }`  
+  Returns `{ "reply": "..." }`.
 
 ---
 
