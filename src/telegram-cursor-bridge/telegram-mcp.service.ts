@@ -1,10 +1,10 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 
-// MCP SDK uses package exports; use require so runtime resolves subpaths
+// MCP SDK uses package exports; require with .js so Node resolves to the actual file
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { Client } = require('@modelcontextprotocol/sdk/client');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio');
+const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 
 /**
  * Connects to a Telegram MCP server (e.g. chigwell/telegram-mcp) via stdio
