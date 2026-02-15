@@ -17,7 +17,7 @@ export class TelegramCursorBridgeController {
       chatId?: number;
       username?: string;
     },
-  ): Promise<{ reply: string }> {
+  ): Promise<{ reply: string | null }> {
     const messageContext =
       body?.messageContext ??
       'Check Telegram for new messages and reply appropriately.';

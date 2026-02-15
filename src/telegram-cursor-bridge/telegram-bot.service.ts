@@ -29,14 +29,15 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         const username = from?.username ? `@${from.username}` : from?.first_name ?? 'Unknown';
         const chat = ctx.chat;
 
-        // In groups: if TELEGRAM_TRIGGER_ON_MENTION=true, only react when the bot is @mentioned.
+        // In groups: if TELEGRAM_TRIGGER_ON_MENTION=true, only react when the bot is @mentioned or text contains "андроид".
         // In private chat: always react to every message.
         const isPrivate = chat?.type === 'private';
         if (!isPrivate && TRIGGER_ONLY_WHEN_MENTIONED) {
           const me = await ctx.telegram.getMe();
           const botUsername = me.username ? `@${me.username}` : '';
           const mentioned = botUsername && text.includes(botUsername);
-          if (!mentioned) return;
+          const hasAndroid = /андроид/i.test(text);
+          if (!mentioned && !hasAndroid) return;
         }
 
         const replyText = await this.replyWithContext.getReplyForMessage(
@@ -44,7 +45,9 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           text,
           username,
         );
-        await ctx.reply(replyText).catch(() => {});
+        if (replyText !== null) {
+          await ctx.reply(replyText).catch(() => {});
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[TelegramCursorBridge] Error handling message:', msg);
