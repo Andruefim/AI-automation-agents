@@ -43,8 +43,9 @@ export class ChatHistoryService {
     const chronological = messages.reverse();
     return chronological
       .map((m) => {
+        const time = m.created_at ? `[${m.created_at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}] ` : '';
         const from = m.role === 'assistant' ? 'Бот' : (m.sender_username ?? 'пользователь');
-        return `${from}: ${m.content}`;
+        return `${time}${from}: ${m.content}`;
       })
       .join('\n');
   }

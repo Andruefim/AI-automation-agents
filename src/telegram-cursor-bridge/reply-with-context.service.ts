@@ -3,25 +3,28 @@ import { TelegramMcpService } from './telegram-mcp.service';
 import { LocalLlmService } from './local-llm.service';
 import { ChatHistoryService } from './chat-history.service';
 
-const DEFAULT_HISTORY_LIMIT = 100;
+const DEFAULT_HISTORY_LIMIT = 20; // Уменьшено со 100 до 20 для лучшего фокуса локальной модели
 
 const USE_TELEGRAM_MCP = process.env.USE_TELEGRAM_MCP === 'true';
 
 /** Когда модель решает не отвечать, она должна вернуть только эту строку. */
 export const SKIP_REPLY_MARKER = '[SKIP]';
 
-const SYSTEM_PROMPT = `Ты умный ассистент пользователя andruefim, его цифровой клон. Реальное имя пользователя — Андрей, а твое - Андроид (или кратко Дрон или Бот)
+export const SYSTEM_PROMPT = `Ты — Андроид (Дрон, Бот), цифровой клон Андрея (andruefim). У тебя есть кличка - Антон. 
+Твой стиль: неформальный, прямой. Обращайся ко всем только на «ты».
 
-Правила:
-1. Говори в первую очередь по-русски.
-2. Твой стиль общения — неформальный, в меру дерзкий и прямой. Всегда обращайся к любому пользователю исключительно на „ты“. Использование обращения на „вы“ запрещено.
-2. Отвечай, когда считаешь, что есть смысл ответить; или когда к тебе напрямую обращаются как «андроид», «дрон», «бот»; или когда обращаются к пользователю «andruefim» — тогда отвечай от его имени (Андрей).
-3. Всегда отвечай на вопросы, которые не обращены конкретному пользователю (общие вопросы в чате).
-4. Отвечай кратко и по делу.
-5. Если кто то обижает пользователя andruefim(Андрея), то защищай его и отвечай наоборот.
+ТЫ НАХОДИШЬСЯ В ГРУППОВОМ ЧАТЕ. Твоя главная задача — не спамить. 
 
-Если в данном сообщении тебе не нужно отвечать (нет обращения к тебе, к Андрею/andruefim, и нет общего вопроса или тебя просят не отвечать ), напиши ровно одну строку без кавычек: ${SKIP_REPLY_MARKER}
-В остальных случаях напиши свой ответ. Если после того как тебя просили не отвечать, к тебе снова обратились напрямую, то отвечай.`;
+ПРАВИЛА ОТВЕТА:
+1. Если сообщение НЕ адресовано тебе лично (нет слов "андроид", "дрон", "бот", "антон") и НЕ является общим вопросом ко всем, ты ОБЯЗАН ответить только одной строкой: ${SKIP_REPLY_MARKER}
+2. Отвечай, если:
+   - Тебя позвали по имени (Бот/Дрон/Андроид/Антон).
+   - Кто-то задал вопрос всему чату (н-р: "Пацаны, как погода?").
+   - Пишет сама Таня — отвечай ей максимально нейтрально и коротко.
+3. Краткость: пиши не больше 1-2 предложений.
+4. Внимательно разделяй Блок Истории и Новое Сообщение. Отвечай только на Новое Сообщение, используя Историю исключительно для понимания темы разговора. Не пытайся отвечать на старые реплики из истории.
+
+Если сомневаешься, уместно ли влезть в разговор — молчи и пиши ${SKIP_REPLY_MARKER}.`;
 
 @Injectable()
 export class ReplyWithContextService {
@@ -37,9 +40,7 @@ export class ReplyWithContextService {
   }
 
   /**
-   * Builds context from chat history (via MCP), then asks the local LLM for a reply.
-   * If MCP is unavailable, uses only the new message (no history).
-   * Returns null when the model decided not to reply (output [SKIP]).
+   * Builds context from chat history, then asks the local LLM for a reply.
    */
   async getReplyForMessage(
     chatId: string | number,
@@ -61,21 +62,36 @@ export class ReplyWithContextService {
       history = await this.chatHistory.getRecentContext(chatId, this.historyLimit);
     }
 
-    const userPrompt = history
-      ? `История чата:\n${history}\n\nНовое сообщение от ${username ?? 'пользователя'}: ${newMessageText}\n\nОтвет бота:`
-      : `Новое сообщение от ${username ?? 'пользователя'}: ${newMessageText}\n\nОтвет бота:`;
+    // Формируем структурированный промпт с явными разделителями
+    const userPrompt = `### ПОСЛЕДНИЕ СООБЩЕНИЯ В ЧАТЕ (ДЛЯ КОНТЕКСТА):
+${history || 'История пуста.'}
+
+### НОВОЕ СООБЩЕНИЕ ОТ ${username?.toUpperCase() ?? 'ПОЛЬЗОВАТЕЛЯ'} (ОТВЕТЬ НА НЕГО):
+${newMessageText}
+
+Инструкция: Если сообщение не требует твоей реакции, ответь только: ${SKIP_REPLY_MARKER}. В противном случае напиши краткий ответ.
+Ответ бота:`;
 
     try {
       const reply = await this.localLlm.generateReply(SYSTEM_PROMPT, userPrompt);
       const trimmed = reply?.trim() ?? '';
+
+      // Логируем входящее сообщение, если не используем MCP
       if (!USE_TELEGRAM_MCP) {
         await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
       }
-      if (trimmed === SKIP_REPLY_MARKER) return null;
+
+      if (trimmed === SKIP_REPLY_MARKER || trimmed.includes(SKIP_REPLY_MARKER)) {
+        return null;
+      }
+
       const out = trimmed || '(Пустой ответ модели.)';
+
+      // Логируем ответ бота, если не используем MCP
       if (!USE_TELEGRAM_MCP) {
         await this.chatHistory.saveMessage(chatId, out, 'assistant', null);
       }
+
       return out;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

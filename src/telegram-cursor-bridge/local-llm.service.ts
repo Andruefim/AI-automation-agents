@@ -35,6 +35,9 @@ export class LocalLlmService {
       model: this.model,
       prompt: userPrompt,
       stream: false,
+      options: {
+        temperature: 0.5,
+      }
     };
     if (systemPrompt) {
       body.system = systemPrompt;
