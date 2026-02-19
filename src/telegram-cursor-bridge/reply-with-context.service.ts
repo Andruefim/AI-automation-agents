@@ -1,37 +1,69 @@
-import { Injectable } from '@nestjs/common';
-import { TelegramMcpService } from './telegram-mcp.service';
+import { Injectable, Logger } from '@nestjs/common';
 import { LocalLlmService } from './local-llm.service';
 import { ChatHistoryService } from './chat-history.service';
 
-const DEFAULT_HISTORY_LIMIT = 20; // Уменьшено со 100 до 20 для лучшего фокуса локальной модели
-
+const DEFAULT_HISTORY_LIMIT = 30; // Оптимально для 12GB VRAM и сохранения контекста
 const USE_TELEGRAM_MCP = process.env.USE_TELEGRAM_MCP === 'true';
+const ENABLE_WEB_TOOLS = process.env.ENABLE_WEB_TOOLS === 'true';
 
-/** Когда модель решает не отвечать, она должна вернуть только эту строку. */
 export const SKIP_REPLY_MARKER = '[SKIP]';
 
-export const SYSTEM_PROMPT = `Ты — Андроид (Дрон, Бот), цифровой клон Андрея (andruefim). У тебя есть кличка - Антон. 
-Твой стиль: неформальный, прямой. Обращайся ко всем только на «ты».
+export const SYSTEM_PROMPT = `Ты — Андроид (клички: Дрон, Бот).
+Обращайся ко всем только на «ты».
 
-ТЫ НАХОДИШЬСЯ В ГРУППОВОМ ЧАТЕ. Твоя главная задача — не спамить. 
+ТЫ НАХОДИШЬСЯ В ГРУППОВОМ ЧАТЕ.
 
 ПРАВИЛА ОТВЕТА:
-1. Если сообщение НЕ адресовано тебе лично (нет слов "андроид", "дрон", "бот", "антон") и НЕ является общим вопросом ко всем, ты ОБЯЗАН ответить только одной строкой: ${SKIP_REPLY_MARKER}
-2. Отвечай, если:
-   - Тебя позвали по имени (Бот/Дрон/Андроид/Антон).
-   - Кто-то задал вопрос всему чату (н-р: "Пацаны, как погода?").
-   - Пишет сама Таня — отвечай ей максимально нейтрально и коротко.
-3. Краткость: пиши не больше 1-2 предложений.
-4. Внимательно разделяй Блок Истории и Новое Сообщение. Отвечай только на Новое Сообщение, используя Историю исключительно для понимания темы разговора. Не пытайся отвечать на старые реплики из истории.
+1. Если решаешь промолчать — ответь одной строкой: только ${SKIP_REPLY_MARKER}, без единого другого символа.
+2. Если отвечаешь — пиши текст ответа сразу, никогда не начинай с ${SKIP_REPLY_MARKER} и не вставляй его в сообщение.`;
 
-Если сомневаешься, уместно ли влезть в разговор — молчи и пиши ${SKIP_REPLY_MARKER}.`;
+/** Возвращает системный промпт для веб-инструментов с текущей датой. */
+function getSystemPromptWebTools(): string {
+  const now = new Date();
+  const currentDate = now.toLocaleDateString('ru-RU', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const currentDateISO = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  return `
+ИНСТРУМЕНТЫ: Тебе доступны 'web_search' и 'web_fetch'.
+ТЕКУЩАЯ ДАТА: Сегодня ${currentDate} (${currentDateISO}). Когда пользователь просит "новости на сегодня", "сегодня", "актуальные новости" — используй эту дату в запросе web_search.
+ТВОЯ ОБЯЗАННОСТЬ: 
+1. Если вопрос касается событий после 2023 года, новостей, цен или погоды — ты ДОЛЖЕН сначала вызвать web_search.
+2. При запросах "на сегодня" / "сегодня" / "актуальные" — обязательно включи текущую дату (${currentDateISO}) в запрос web_search.
+3. Никогда не говори "я не могу проверить интернет". Ты МОЖЕШЬ, используя инструменты.
+4. Если пользователь прислал ссылку — используй 'web_fetch', чтобы прочитать её.
+5. Сначала выполни поиск, получи результат, и только потом отвечай пользователю.`;
+}
+
+/** Фразы, при которых в конец сообщения пользователя добавляется явный запрос на вызов web_search. */
+const WEB_SEARCH_TRIGGERS = [
+  /проверь в интернете/i,
+  /найди в интернете/i,
+  /поищи в интернете/i,
+  /поиск(и|ать)?\s+(в интернете|в сети)/i,
+  /\bнайди\b/i,
+  /найди\s+(информацию|данные|когда|что)/i,
+  /когда выйдет/i,
+  /(на сегодня|сегодня)/i,
+  /текущ(ая|ий|ие)/i,
+  /актуальн/i,
+  /у тебя есть доступ к интернету/i,
+  /есть доступ к интернету/i,
+];
+
+function wantsWebSearch(text: string): boolean {
+  return WEB_SEARCH_TRIGGERS.some((re) => re.test(text));
+}
 
 @Injectable()
 export class ReplyWithContextService {
+  private readonly logger = new Logger(ReplyWithContextService.name);
   private readonly historyLimit: number;
 
   constructor(
-    private readonly telegramMcp: TelegramMcpService,
     private readonly localLlm: LocalLlmService,
     private readonly chatHistory: ChatHistoryService,
   ) {
@@ -39,63 +71,84 @@ export class ReplyWithContextService {
     this.historyLimit = limit ? Math.max(1, parseInt(limit, 10)) : DEFAULT_HISTORY_LIMIT;
   }
 
-  /**
-   * Builds context from chat history, then asks the local LLM for a reply.
-   */
   async getReplyForMessage(
     chatId: string | number,
     newMessageText: string,
     username?: string,
   ): Promise<string | null> {
     if (!this.localLlm.isConfigured()) {
-      return 'Локальная модель недоступна. Укажите OLLAMA_BASE_URL и OLLAMA_MODEL.';
+      return 'Локальная модель не настроена.';
     }
 
-    let history = '';
-    if (USE_TELEGRAM_MCP && this.telegramMcp.isConfigured()) {
-      try {
-        history = await this.telegramMcp.getChatHistory(chatId, this.historyLimit);
-      } catch {
-        history = '';
-      }
-    } else {
-      history = await this.chatHistory.getRecentContext(chatId, this.historyLimit);
+    // 1. Получаем историю в виде массива объектов (из БД или MCP)
+    type HistoryItem = { role: 'user' | 'assistant'; content: string; username: string | null };
+    let rawHistory: HistoryItem[] = [];
+    try {
+      rawHistory = await this.chatHistory.getRecentMessages(chatId, this.historyLimit);
+    } catch (err) {
+      this.logger.error('Ошибка получения истории:', err);
     }
 
-    // Формируем структурированный промпт с явными разделителями
-    const userPrompt = `### ПОСЛЕДНИЕ СООБЩЕНИЯ В ЧАТЕ (ДЛЯ КОНТЕКСТА):
-${history || 'История пуста.'}
+    // 2. Формируем массив сообщений для Chat API
+    const messages = rawHistory.map((msg) => ({
+      role: msg.role === 'assistant' ? 'assistant' : 'user',
+      content: msg.username ? `${msg.username}: ${msg.content}` : msg.content,
+    }));
 
-### НОВОЕ СООБЩЕНИЕ ОТ ${username?.toUpperCase() ?? 'ПОЛЬЗОВАТЕЛЯ'} (ОТВЕТЬ НА НЕГО):
-${newMessageText}
-
-Инструкция: Если сообщение не требует твоей реакции, ответь только: ${SKIP_REPLY_MARKER}. В противном случае напиши краткий ответ.
-Ответ бота:`;
+    // 3. Добавляем текущее (новое) сообщение; при явном запросе поиска подсказываем модели вызвать web_search
+    let lastUserContent = `${username ?? 'User'}: ${newMessageText}`;
+    if (ENABLE_WEB_TOOLS && wantsWebSearch(newMessageText)) {
+      const now = new Date();
+      const currentDateISO = now.toISOString().split('T')[0];
+      const hasTodayKeyword = /(на сегодня|сегодня|актуальн)/i.test(newMessageText);
+      const hint = hasTodayKeyword
+        ? `\n[Обязательно используй web_search с текущей датой ${currentDateISO} в запросе.]`
+        : '\n[Обязательно используй инструмент web_search для ответа на этот запрос.]';
+      lastUserContent += hint;
+    }
+    messages.push({
+      role: 'user',
+      content: lastUserContent,
+    });
 
     try {
-      const reply = await this.localLlm.generateReply(SYSTEM_PROMPT, userPrompt);
+      const systemPrompt = ENABLE_WEB_TOOLS
+        ? SYSTEM_PROMPT + getSystemPromptWebTools()
+        : SYSTEM_PROMPT;
+      if (ENABLE_WEB_TOOLS) {
+        this.logger.debug(`Web tools enabled, using generateChatReplyWithTools`);
+      }
+      const reply = ENABLE_WEB_TOOLS
+        ? await this.localLlm.generateChatReplyWithTools(systemPrompt, messages)
+        : await this.localLlm.generateChatReply(systemPrompt, messages);
       const trimmed = reply?.trim() ?? '';
 
-      // Логируем входящее сообщение, если не используем MCP
+      // Сохраняем входящее сообщение в БД
       if (!USE_TELEGRAM_MCP) {
         await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
       }
 
-      if (trimmed === SKIP_REPLY_MARKER || trimmed.includes(SKIP_REPLY_MARKER)) {
+      // Пропуск только при точном совпадении с [SKIP]
+      if (trimmed === SKIP_REPLY_MARKER) {
         return null;
       }
 
-      const out = trimmed || '(Пустой ответ модели.)';
+      // Убираем случайный [SKIP] в начале ответа (модель иногда лепит его по привычке)
+      let output = trimmed
+        .replace(/^\s*\[SKIP\]\s*-?\s*/i, '')
+        .trim();
+      output = output || '(Модель промолчала)';
 
-      // Логируем ответ бота, если не используем MCP
+      // Сохраняем ответ бота в БД
       if (!USE_TELEGRAM_MCP) {
-        await this.chatHistory.saveMessage(chatId, out, 'assistant', null);
+        await this.chatHistory.saveMessage(chatId, output, 'assistant');
       }
 
-      return out;
+      return output;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return `Ошибка модели: ${msg}`;
+      this.logger.error('Ошибка генерации LLM:', msg);
+      return `Ошибка: ${msg}`;
     }
   }
 }

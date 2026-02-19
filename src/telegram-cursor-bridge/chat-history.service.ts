@@ -11,7 +11,7 @@ export class ChatHistoryService {
   ) {}
 
   /**
-   * Saves a message to the chat history (no limit on total stored; limit only when reading context).
+   * Сохраняет сообщение в БД.
    */
   async saveMessage(
     chatId: string | number,
@@ -29,24 +29,33 @@ export class ChatHistoryService {
   }
 
   /**
-   * Returns the last `limit` messages for the chat, formatted as a single string for the LLM prompt.
-   * Messages are ordered chronologically (oldest first) in the string.
+   * Возвращает последние сообщения в виде массива объектов.
+   * Это именно то, что нужно для Chat API (messages: []).
    */
-  async getRecentContext(chatId: string | number, limit: number): Promise<string> {
+  async getRecentMessages(chatId: string | number, limit: number) {
     const messages = await this.chatRepo.find({
       where: { chat_id: String(chatId) },
-      order: { created_at: 'DESC' },
+      order: { created_at: 'DESC' }, // Берем самые свежие
       take: limit,
     });
-    if (messages.length === 0) return '';
 
-    const chronological = messages.reverse();
-    return chronological
-      .map((m) => {
-        const time = m.created_at ? `[${m.created_at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}] ` : '';
-        const from = m.role === 'assistant' ? 'Бот' : (m.sender_username ?? 'пользователь');
-        return `${time}${from}: ${m.content}`;
-      })
+    if (messages.length === 0) return [];
+
+    // Разворачиваем, чтобы история шла от старых к новым (хронологически)
+    return messages.reverse().map((m) => ({
+      role: m.role, // 'user' или 'assistant'
+      content: m.content,
+      username: m.sender_username, // Передаем имя, чтобы ReplyService мог его склеить с текстом
+    }));
+  }
+
+  /**
+   * Старый метод для обратной совместимости (если где-то еще нужен текст строкой)
+   */
+  async getRecentContextString(chatId: string | number, limit: number): Promise<string> {
+    const history = await this.getRecentMessages(chatId, limit);
+    return history
+      .map((m) => `${m.username ?? (m.role === 'assistant' ? 'Бот' : 'User')}: ${m.content}`)
       .join('\n');
   }
 }

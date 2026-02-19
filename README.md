@@ -48,10 +48,11 @@ This project runs a **Telegram bot** that replies using a **local LLM** (Ollama)
 
 1. Copy `.env.example` to `.env` and set:
    - `TELEGRAM_BOT_TOKEN` – from @BotFather
-   - `OLLAMA_BASE_URL` (default `http://localhost:11434`), `OLLAMA_MODEL` (e.g. `llama3.2`)
+   - `OLLAMA_BASE_URL` (default `http://localhost:11434`), `OLLAMA_MODEL` (e.g. `gemma3:4b`)
    - Optionally `TELEGRAM_MCP_PATH` – path to the telegram-mcp repo (app runs `uv --directory <path> run main.py`)
 2. Optional: `TELEGRAM_TRIGGER_ON_MENTION=true` – only reply when the bot is @mentioned in groups.
 3. Optional: `CHAT_HISTORY_LIMIT` – number of recent messages to pass to the model (default 40).
+4. **Web tools (internet access for the model):** Set `ENABLE_WEB_TOOLS=true` and `OLLAMA_API_KEY` (free key at [ollama.com/settings/keys](https://ollama.com/settings/keys)) to enable `web_search` and `web_fetch` tools. Use a model that supports tool calling in Ollama, e.g. **qwen3:latest** or **qwen3:4b** (`ollama pull qwen3`). Gemma3 may not support tools and can return an error.
 
 ### Run
 
