@@ -37,7 +37,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           const botUsername = me.username ? `@${me.username}` : '';
           const mentioned = botUsername && text.includes(botUsername);
           const hasTriggerWord = /(андроид|дрон|антон)/i.test(text);
-          if (!mentioned && !hasTriggerWord) return;
+          if (!mentioned && !hasTriggerWord) {
+            // Save message to history so when bot is triggered later it has full chat context
+            await this.replyWithContext.saveIncomingMessage(chat?.id ?? 0, text, username).catch(() => {});
+            return;
+          }
         }
 
         const replyText = await this.replyWithContext.getReplyForMessage(

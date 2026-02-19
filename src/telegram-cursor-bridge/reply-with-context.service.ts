@@ -2,58 +2,27 @@ import { Injectable, Logger } from '@nestjs/common';
 import { LocalLlmService } from './local-llm.service';
 import { ChatHistoryService } from './chat-history.service';
 
-const DEFAULT_HISTORY_LIMIT = 30; // Оптимально для 12GB VRAM и сохранения контекста
+const DEFAULT_HISTORY_LIMIT = 20; // Уменьшено до 20, чтобы оставить место под результаты поиска в контексте 12GB VRAM
 const USE_TELEGRAM_MCP = process.env.USE_TELEGRAM_MCP === 'true';
 const ENABLE_WEB_TOOLS = process.env.ENABLE_WEB_TOOLS === 'true';
 
-export const SKIP_REPLY_MARKER = '[SKIP]';
+export const SYSTEM_PROMPT = `Ты — бот-андроид по имени Дрон. 
+Общайся со всеми на «ты». Ты находишься в групповом чате. Пиши кратко и по делу.`;
 
-export const SYSTEM_PROMPT = `Ты — Андроид (клички: Дрон, Бот).
-Обращайся ко всем только на «ты».
-
-ТЫ НАХОДИШЬСЯ В ГРУППОВОМ ЧАТЕ.
-
-ПРАВИЛА ОТВЕТА:
-1. Если решаешь промолчать — ответь одной строкой: только ${SKIP_REPLY_MARKER}, без единого другого символа.
-2. Если отвечаешь — пиши текст ответа сразу, никогда не начинай с ${SKIP_REPLY_MARKER} и не вставляй его в сообщение.`;
-
-/** Возвращает системный промпт для веб-инструментов с текущей датой. */
-function getSystemPromptWebTools(): string {
+/** * Возвращает только факты о дате. 
+ * Инструкции по использованию функций Ollama добавит сама автоматически.
+ */
+function getSystemContext(): string {
   const now = new Date();
-  const currentDate = now.toLocaleDateString('ru-RU', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const currentDateISO = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  return `
-ИНСТРУМЕНТЫ: Тебе доступны 'web_search' и 'web_fetch'.
-ТЕКУЩАЯ ДАТА: Сегодня ${currentDate} (${currentDateISO}). Это РЕАЛЬНАЯ текущая дата. ВСЕГДА используй её, когда говоришь "на текущий момент", "сейчас", "сегодня".
-ВАЖНО О ДАТАХ: Результаты web_search могут содержать старые статьи с датами (например, "март 2024", "октябрь 2023"). Эти даты — это даты публикации статей, НЕ текущая дата. Если в результатах поиска есть дата, указывай её как "по данным от [дата из статьи]" или "согласно статье от [дата]", но текущий момент всегда ${currentDateISO}. НИКОГДА не пиши "на текущий момент (март 2024)" если текущая дата ${currentDateISO}.
-ТВОЯ ОБЯЗАННОСТЬ: 
-1. Если вопрос касается событий после 2023 года, новостей, цен или погоды — ты ДОЛЖЕН сначала вызвать web_search.
-2. При запросах "на сегодня" / "сегодня" / "актуальные" — обязательно включи текущую дату (${currentDateISO}) в запрос web_search.
-3. Никогда не говори "я не могу проверить интернет". Ты МОЖЕШЬ, используя инструменты.
-4. Если пользователь прислал ссылку — используй 'web_fetch', чтобы прочитать её.
-5. Сначала выполни поиск, получи результат, и только потом отвечай пользователю.
-6. Когда цитируешь результаты поиска с датами, всегда уточняй: "по данным от [дата из статьи]" или "согласно статье от [дата]", но текущий момент — это ${currentDateISO}.`;
+  const currentDateISO = now.toISOString().split('T')[0];
+  return `\n\nТЕКУЩАЯ ДАТА: ${currentDateISO}. Используй её для оценки свежести новостей.`;
 }
 
-/** Фразы, при которых в конец сообщения пользователя добавляется явный запрос на вызов web_search. */
+/** Расширенные триггеры для поиска (включая спорт и киберспорт) */
 const WEB_SEARCH_TRIGGERS = [
-  /проверь в интернете/i,
-  /найди в интернете/i,
-  /поищи в интернете/i,
-  /поиск(и|ать)?\s+(в интернете|в сети)/i,
-  /\bнайди\b/i,
-  /найди\s+(информацию|данные|когда|что)/i,
-  /когда выйдет/i,
-  /(на сегодня|сегодня)/i,
-  /текущ(ая|ий|ие)/i,
-  /актуальн/i,
-  /у тебя есть доступ к интернету/i,
-  /есть доступ к интернету/i,
+  /интернет/i, /поиск/i, /найди/i, /поищи/i, /узнай/i,
+  /когда/i, /кто/i, /матч/i, /счет/i, /результат/i,
+  /сегодня/i, /актуальн/i, /сейчас/i, /новости/i, /курсы/i
 ];
 
 function wantsWebSearch(text: string): boolean {
@@ -73,84 +42,61 @@ export class ReplyWithContextService {
     this.historyLimit = limit ? Math.max(1, parseInt(limit, 10)) : DEFAULT_HISTORY_LIMIT;
   }
 
+  async saveIncomingMessage(chatId: string | number, text: string, username?: string): Promise<void> {
+    if (USE_TELEGRAM_MCP) return;
+    await this.chatHistory.saveMessage(chatId, text, 'user', username);
+  }
+
   async getReplyForMessage(
     chatId: string | number,
     newMessageText: string,
     username?: string,
   ): Promise<string | null> {
-    if (!this.localLlm.isConfigured()) {
-      return 'Локальная модель не настроена.';
-    }
+    if (!this.localLlm.isConfigured()) return 'Ошибка: LLM не настроена.';
 
-    // 1. Получаем историю в виде массива объектов (из БД или MCP)
-    type HistoryItem = { role: 'user' | 'assistant'; content: string; username: string | null };
-    let rawHistory: HistoryItem[] = [];
+    // 1. История
+    let rawHistory: { role: "assistant" | "user"; content: string; username: string | null; }[] = [];
     try {
       rawHistory = await this.chatHistory.getRecentMessages(chatId, this.historyLimit);
     } catch (err) {
       this.logger.error('Ошибка получения истории:', err);
     }
 
-    // 2. Формируем массив сообщений для Chat API
     const messages = rawHistory.map((msg) => ({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: msg.username ? `${msg.username}: ${msg.content}` : msg.content,
     }));
 
-    // 3. Добавляем текущее (новое) сообщение; при явном запросе поиска подсказываем модели вызвать web_search
+    // 2. Текущее сообщение
     let lastUserContent = `${username ?? 'User'}: ${newMessageText}`;
+    
+    // Мягкая подсказка (hint) остается — она помогает 8b моделям "решиться" на вызов инструмента
     if (ENABLE_WEB_TOOLS && wantsWebSearch(newMessageText)) {
-      const now = new Date();
-      const currentDateISO = now.toISOString().split('T')[0];
-      const hasTodayKeyword = /(на сегодня|сегодня|актуальн)/i.test(newMessageText);
-      const hint = hasTodayKeyword
-        ? `\n[Обязательно используй web_search с текущей датой ${currentDateISO} в запросе.]`
-        : '\n[Обязательно используй инструмент web_search для ответа на этот запрос.]';
-      lastUserContent += hint;
+      lastUserContent += `\n\n[Примечание: Используй web_search для проверки актуальных данных за 2026 год]`;
     }
-    messages.push({
-      role: 'user',
-      content: lastUserContent,
-    });
+
+    messages.push({ role: 'user', content: lastUserContent });
 
     try {
-      const systemPrompt = ENABLE_WEB_TOOLS
-        ? SYSTEM_PROMPT + getSystemPromptWebTools()
-        : SYSTEM_PROMPT;
-      if (ENABLE_WEB_TOOLS) {
-        this.logger.debug(`Web tools enabled, using generateChatReplyWithTools`);
-      }
+      // Собираем промпт: Личность + Дата
+      const systemPrompt = SYSTEM_PROMPT + (ENABLE_WEB_TOOLS ? getSystemContext() : '');
+
       const reply = ENABLE_WEB_TOOLS
         ? await this.localLlm.generateChatReplyWithTools(systemPrompt, messages)
         : await this.localLlm.generateChatReply(systemPrompt, messages);
-      const trimmed = reply?.trim() ?? '';
 
-      // Сохраняем входящее сообщение в БД
+      const output = reply?.trim() || '(Модель промолчала)';
+
+      // 3. Сохранение
       if (!USE_TELEGRAM_MCP) {
         await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
-      }
-
-      // Пропуск только при точном совпадении с [SKIP]
-      if (trimmed === SKIP_REPLY_MARKER) {
-        return null;
-      }
-
-      // Убираем случайный [SKIP] в начале ответа (модель иногда лепит его по привычке)
-      let output = trimmed
-        .replace(/^\s*\[SKIP\]\s*-?\s*/i, '')
-        .trim();
-      output = output || '(Модель промолчала)';
-
-      // Сохраняем ответ бота в БД
-      if (!USE_TELEGRAM_MCP) {
         await this.chatHistory.saveMessage(chatId, output, 'assistant');
       }
 
       return output;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error('Ошибка генерации LLM:', msg);
-      return `Ошибка: ${msg}`;
+      this.logger.error('Ошибка генерации LLM:', err);
+      return `Ошибка: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
 }

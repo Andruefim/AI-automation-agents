@@ -3,9 +3,9 @@ import axios from 'axios';
 import { OllamaWebSearchService } from './ollama-web-search.service';
 
 const DEFAULT_BASE_URL = 'http://localhost:11434';
-const DEFAULT_MODEL = 'gemma3:4b';
+const DEFAULT_MODEL = 'qwen3:latest';
 const MAX_TOOL_ITERATIONS = 5;
-const TOOL_RESULT_MAX_LENGTH = 4000;
+const TOOL_RESULT_MAX_LENGTH = 10000;
 
 export type ChatMessage = { role: string; content: string };
 
@@ -127,7 +127,10 @@ export class LocalLlmService {
         messages: fullMessages,
         stream: false,
         tools: WEB_TOOLS,
-        options: { temperature: 0.5 },
+        options: { 
+          temperature: 0.3, // Lower temperature to 0.2 or 0.3 for more reliable tool-calling JSON
+          num_ctx: 12288    // Force a 12k context window (uses about 1-2GB extra VRAM)
+         },
       };
 
       let data: OllamaChatResponse;
