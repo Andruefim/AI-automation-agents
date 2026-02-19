@@ -33,12 +33,19 @@ const WEB_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'web_search',
-      description: 'Search the web for current information. Use for recent events, facts, or when you need up-to-date data.',
+      description:
+        'Search the web for current information. Use for recent events, facts, or when you need up-to-date data. ' +
+        'IMPORTANT: Always write the query in English regardless of the language the user used. ' +
+        'English queries return significantly more recent and accurate results. ' +
+        'Example: if user asks "когда NAVI последний раз играли", use query "NAVI last match result 2026".',
       parameters: {
         type: 'object',
         required: ['query'],
         properties: {
-          query: { type: 'string', description: 'Search query' },
+          query: {
+            type: 'string',
+            description: 'Search query. Must be in English for best results.',
+          },
           max_results: { type: 'number', description: 'Max results (1-10)' },
         },
       },
@@ -59,6 +66,16 @@ const WEB_TOOLS = [
     },
   },
 ];
+
+/**
+ * Injected before tool loop messages to reinforce English search behavior.
+ * Small local models respond better to repeated, concrete instructions.
+ */
+const TOOL_SYSTEM_REMINDER =
+  'When using web_search, always write queries in English. ' +
+  'Do not answer questions about recent events from memory — ' +
+  'use web_search first and base your answer strictly on the results returned. ' +
+  'If search returns no results or results seem outdated, say so explicitly instead of guessing.';
 
 /**
  * Calls a local Ollama (or compatible) API to generate a reply.
@@ -113,9 +130,13 @@ export class LocalLlmService {
     messages: ChatMessage[],
   ): Promise<string> {
     const url = `${this.baseUrl}/api/chat`;
-    // Используем role: 'system' для системного промпта (современные версии Ollama поддерживают это с tools)
+
+    // Append tool behavior reminder to system prompt so it applies for the
+    // whole conversation, not just the first turn.
+    const enrichedSystemPrompt = `${systemPrompt}\n\n${TOOL_SYSTEM_REMINDER}`;
+
     const fullMessages: (ChatMessage & { tool_name?: string })[] = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: enrichedSystemPrompt },
       ...messages,
     ];
     let iterations = 0;
@@ -127,17 +148,16 @@ export class LocalLlmService {
         messages: fullMessages,
         stream: false,
         tools: WEB_TOOLS,
-        options: { 
-          temperature: 0.3, // Lower temperature to 0.2 or 0.3 for more reliable tool-calling JSON
-          num_ctx: 12288    // Force a 12k context window (uses about 1-2GB extra VRAM)
-         },
+        options: {
+          temperature: 0.3, // Lower temperature for more reliable tool-calling JSON
+          num_ctx: 12288,   // Force a 12k context window (uses about 1-2GB extra VRAM)
+        },
       };
 
       let data: OllamaChatResponse;
       try {
         const res = await axios.post<OllamaChatResponse>(url, body, { timeout: 120000 });
         data = res.data;
-        // Логируем ответ от Ollama для отладки tool_calls
         this.logger.debug(
           `Ollama Response (iteration ${iterations}): ${JSON.stringify({
             hasToolCalls: Boolean(data.message?.tool_calls?.length),
@@ -153,16 +173,16 @@ export class LocalLlmService {
         const status = axiosErr?.response?.status;
         const bodyErr = axiosErr?.response?.data;
         const errMsg = axiosErr?.message || String(err);
-        
-        // Если первая итерация с system role дала 400, пробуем fallback на user role
+
+        // If first iteration with system role gave 400, fall back to user role
         if (iterations === 1 && status === 400) {
           this.logger.warn(
             `Ollama rejected system role with tools, falling back to user role. Error: ${JSON.stringify(bodyErr)}`,
           );
-          fullMessages[0] = { role: 'user', content: systemPrompt };
-          continue; // Повторяем попытку с user role
+          fullMessages[0] = { role: 'user', content: enrichedSystemPrompt };
+          continue;
         }
-        
+
         if (status === 400 && bodyErr != null) {
           this.logger.error(`Ollama 400 response: ${JSON.stringify(bodyErr)}`);
         } else if (status) {
@@ -172,8 +192,8 @@ export class LocalLlmService {
         }
         throw err;
       }
-      const message = data.message;
 
+      const message = data.message;
       if (!message) {
         return '';
       }
@@ -213,6 +233,8 @@ export class LocalLlmService {
         if (name === 'web_search') {
           const query = String(args.query ?? '').trim() || 'general';
           const maxResults = typeof args.max_results === 'number' ? args.max_results : 5;
+          // Log the actual query so we can verify English enforcement in debug
+          this.logger.debug(`web_search called with query: "${query}"`);
           content = await this.ollamaWebSearch.webSearch(query, maxResults);
         } else if (name === 'web_fetch') {
           const urlArg = String(args.url ?? '').trim();
