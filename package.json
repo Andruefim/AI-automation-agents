@@ -32,7 +32,8 @@
     "rxjs": "^7.8.1",
     "telegraf": "^4.16.3",
     "typeorm": "^0.3.28",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@qdrant/qdrant-js": "^1.16.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

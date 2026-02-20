@@ -53,6 +53,7 @@ This project runs a **Telegram bot** that replies using a **local LLM** (Ollama)
 2. Optional: `TELEGRAM_TRIGGER_ON_MENTION=true` – only reply when the bot is @mentioned in groups.
 3. Optional: `CHAT_HISTORY_LIMIT` – number of recent messages to pass to the model (default 40).
 4. **Web tools (internet access for the model):** Set `ENABLE_WEB_TOOLS=true` and `OLLAMA_API_KEY` (free key at [ollama.com/settings/keys](https://ollama.com/settings/keys)) to enable `web_search` and `web_fetch` tools. Use a model that supports tool calling in Ollama, e.g. **qwen3:latest** or **qwen3:4b** (`ollama pull qwen3`). Gemma3 may not support tools and can return an error.
+5. **RAG with semantic search (Advanced):** Set `ENABLE_RAG=true` to enable semantic search over chat history. This uses embeddings (`nomic-embed-text` via Ollama) and Qdrant vector database. Install Qdrant: `docker run -p 6333:6333 qdrant/qdrant`. Pull the embedding model: `ollama pull nomic-embed-text`. The bot will combine recent messages (temporal context) with semantically relevant chunks from history (vector search), allowing it to recall relevant conversations even if they're old.
 
 ### Run
 

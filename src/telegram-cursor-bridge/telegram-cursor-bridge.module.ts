@@ -6,6 +6,8 @@ import { LocalLlmService } from './local-llm.service';
 import { ReplyWithContextService } from './reply-with-context.service';
 import { ChatHistoryService } from './chat-history.service';
 import { OllamaWebSearchService } from './ollama-web-search.service';
+import { EmbeddingService } from './embedding.service';
+import { QdrantService } from './qdrant.service';
 import { ChatMessage } from './entities/chat-message.entity';
 
 @Module({
@@ -17,6 +19,8 @@ import { ChatMessage } from './entities/chat-message.entity';
     ReplyWithContextService,
     TelegramBotService,
     OllamaWebSearchService,
+    EmbeddingService,
+    QdrantService,
   ],
 })
 export class TelegramCursorBridgeModule {}
