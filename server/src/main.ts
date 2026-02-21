@@ -1,4 +1,9 @@
-import 'dotenv/config';
+import * as path from 'path';
+import { config } from 'dotenv';
+
+// Load .env from project root (parent of server/) so it works when running from server/
+config({ path: path.resolve(__dirname, '../../.env') });
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 

@@ -37,7 +37,7 @@ const WEB_TOOLS = [
         'Search the web for current information. Use for recent events, facts, or when you need up-to-date data. ' +
         'IMPORTANT: Always write the query in English regardless of the language the user used. ' +
         'English queries return significantly more recent and accurate results. ' +
-        'Example: if user asks "когда NAVI последний раз играли", use query "NAVI last match result 2026".',
+        'Example: if user asks "когда NAVI последний раз играли", use query "NAVI last match result".',
       parameters: {
         type: 'object',
         required: ['query'],
