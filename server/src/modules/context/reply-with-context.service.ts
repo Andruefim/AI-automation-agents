@@ -5,7 +5,6 @@ import { EmbeddingService } from '../vector-store/embedding.service';
 import { QdrantService } from '../vector-store/qdrant.service';
 
 const DEFAULT_HISTORY_LIMIT = 20;
-const USE_TELEGRAM_MCP = process.env.USE_TELEGRAM_MCP === 'true';
 const ENABLE_WEB_TOOLS = process.env.ENABLE_WEB_TOOLS === 'true';
 const ENABLE_RAG = process.env.ENABLE_RAG === 'true';
 const RAG_RECENT_MESSAGES = parseInt(
@@ -52,7 +51,6 @@ export class ReplyWithContextService {
   }
 
   async saveIncomingMessage(chatId: string | number, text: string, username?: string): Promise<void> {
-    if (USE_TELEGRAM_MCP) return;
     await this.chatHistory.saveMessage(chatId, text, 'user', username);
 
     if (ENABLE_RAG && this.embeddingService.isConfigured()) {
@@ -112,17 +110,15 @@ export class ReplyWithContextService {
 
       const output = reply?.trim() || '(Модель промолчала)';
 
-      if (!USE_TELEGRAM_MCP) {
-        await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
-        await this.chatHistory.saveMessage(chatId, output, 'assistant');
+      await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
+      await this.chatHistory.saveMessage(chatId, output, 'assistant');
 
-        if (ENABLE_RAG && this.embeddingService.isConfigured()) {
-          this.chatHistory
-            .createChunksFromRecentMessages(chatId)
-            .catch((err) => {
-              this.logger.error('Failed to index messages for RAG:', err);
-            });
-        }
+      if (ENABLE_RAG && this.embeddingService.isConfigured()) {
+        this.chatHistory
+          .createChunksFromRecentMessages(chatId)
+          .catch((err) => {
+            this.logger.error('Failed to index messages for RAG:', err);
+          });
       }
 
       return output;
