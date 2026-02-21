@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LocalLlmService } from './local-llm.service';
-import { ChatHistoryService } from './chat-history.service';
-import { EmbeddingService } from './embedding.service';
-import { QdrantService } from './qdrant.service';
+import { LocalLlmService } from '../llm/local-llm.service';
+import { ChatHistoryService } from '../chat/chat-history.service';
+import { EmbeddingService } from '../vector-store/embedding.service';
+import { QdrantService } from '../vector-store/qdrant.service';
 
-const DEFAULT_HISTORY_LIMIT = 20; // Уменьшено до 20, чтобы оставить место под результаты поиска в контексте 12GB VRAM
+const DEFAULT_HISTORY_LIMIT = 20;
 const USE_TELEGRAM_MCP = process.env.USE_TELEGRAM_MCP === 'true';
 const ENABLE_WEB_TOOLS = process.env.ENABLE_WEB_TOOLS === 'true';
 const ENABLE_RAG = process.env.ENABLE_RAG === 'true';
@@ -20,16 +20,12 @@ const RAG_SIMILAR_LIMIT = parseInt(
 export const SYSTEM_PROMPT = `Ты — бот-андроид по имени Дрон. 
 Общайся со всеми на «ты». Ты находишься в групповом чате. Пиши кратко и по делу.`;
 
-/** * Возвращает только факты о дате. 
- * Инструкции по использованию функций Ollama добавит сама автоматически.
- */
 function getSystemContext(): string {
   const now = new Date();
   const currentDateISO = now.toISOString().split('T')[0];
   return `\n\nТЕКУЩАЯ ДАТА: ${currentDateISO}. Используй её для оценки свежести новостей.`;
 }
 
-/** Расширенные триггеры для поиска (включая спорт и киберспорт) */
 const WEB_SEARCH_TRIGGERS = [
   /интернет/i, /поиск/i, /найди/i, /поищи/i, /узнай/i,
   /когда/i, /кто/i, /матч/i, /счет/i, /результат/i,
@@ -58,8 +54,7 @@ export class ReplyWithContextService {
   async saveIncomingMessage(chatId: string | number, text: string, username?: string): Promise<void> {
     if (USE_TELEGRAM_MCP) return;
     await this.chatHistory.saveMessage(chatId, text, 'user', username);
-    
-    // Индексация для RAG (асинхронно, не блокируем ответ)
+
     if (ENABLE_RAG && this.embeddingService.isConfigured()) {
       this.chatHistory
         .createChunksFromRecentMessages(chatId)
@@ -78,20 +73,16 @@ export class ReplyWithContextService {
 
     const chatIdStr = String(chatId);
 
-    // 1. Получить историю: гибридный подход (свежее + релевантное) если RAG включен
     let rawHistory: { role: "assistant" | "user"; content: string; username: string | null; }[] = [];
-    
+
     if (ENABLE_RAG && this.embeddingService.isConfigured()) {
       try {
-        // Гибридный поиск: свежее + семантически релевантное
         rawHistory = await this.getHybridHistory(chatIdStr, newMessageText);
       } catch (err) {
         this.logger.error('Ошибка гибридного поиска истории, fallback на обычный:', err);
-        // Fallback на обычный поиск
         rawHistory = await this.chatHistory.getRecentMessages(chatId, RAG_RECENT_MESSAGES);
       }
     } else {
-      // Обычный поиск по времени
       try {
         rawHistory = await this.chatHistory.getRecentMessages(chatId, this.historyLimit);
       } catch (err) {
@@ -104,10 +95,8 @@ export class ReplyWithContextService {
       content: msg.username ? `${msg.username}: ${msg.content}` : msg.content,
     }));
 
-    // 2. Текущее сообщение
     let lastUserContent = `${username ?? 'User'}: ${newMessageText}`;
-    
-    // Мягкая подсказка (hint) остается — она помогает 8b моделям "решиться" на вызов инструмента
+
     if (ENABLE_WEB_TOOLS && wantsWebSearch(newMessageText)) {
       lastUserContent += `\n\n[Примечание: Используй web_search для проверки актуальных данных за 2026 год]`;
     }
@@ -115,7 +104,6 @@ export class ReplyWithContextService {
     messages.push({ role: 'user', content: lastUserContent });
 
     try {
-      // Собираем промпт: Личность + Дата
       const systemPrompt = SYSTEM_PROMPT + (ENABLE_WEB_TOOLS ? getSystemContext() : '');
 
       const reply = ENABLE_WEB_TOOLS
@@ -124,12 +112,10 @@ export class ReplyWithContextService {
 
       const output = reply?.trim() || '(Модель промолчала)';
 
-      // 3. Сохранение
       if (!USE_TELEGRAM_MCP) {
         await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
         await this.chatHistory.saveMessage(chatId, output, 'assistant');
-        
-        // Индексация для RAG (асинхронно, не блокируем ответ)
+
         if (ENABLE_RAG && this.embeddingService.isConfigured()) {
           this.chatHistory
             .createChunksFromRecentMessages(chatId)
@@ -146,23 +132,17 @@ export class ReplyWithContextService {
     }
   }
 
-  /**
-   * Гибридный поиск: объединяет свежие сообщения с семантически релевантными из истории.
-   * Возвращает дедуплицированный список сообщений.
-   */
   private async getHybridHistory(
     chatId: string,
     queryText: string,
   ): Promise<
     Array<{ role: 'assistant' | 'user'; content: string; username: string | null }>
   > {
-    // 1. Получить свежие сообщения (для контекста)
     const recentMessages = await this.chatHistory.getRecentMessages(
       chatId,
       RAG_RECENT_MESSAGES,
     );
 
-    // 2. Семантический поиск релевантных чанков
     let relevantChunks: Array<{
       messageIds: number[];
       chunkText: string;
@@ -182,12 +162,10 @@ export class ReplyWithContextService {
       this.logger.warn('Semantic search failed, using only recent messages:', err);
     }
 
-    // 3. Дедупликация: собрать все message_ids из свежих
     const recentMessageIds = new Set(
       recentMessages.map((m) => m.id).filter((id): id is number => id !== undefined),
     );
 
-    // 4. Получить полные сообщения из релевантных чанков (исключая дубликаты)
     const relevantMessageIds = new Set<number>();
     for (const chunk of relevantChunks) {
       for (const msgId of chunk.messageIds) {
@@ -197,16 +175,13 @@ export class ReplyWithContextService {
       }
     }
 
-    // 5. Загрузить сообщения по IDs из БД
     const relevantMessagesData =
       relevantMessageIds.size > 0
         ? await this.chatHistory.getMessagesByIds(Array.from(relevantMessageIds))
         : [];
 
-    // 6. Объединить: сначала свежие, потом релевантные (отсортированные по времени)
     const allMessages = [...recentMessages, ...relevantMessagesData];
 
-    // 7. Дедупликация по ID и сортировка по времени
     const seenIds = new Set<number>();
     const uniqueMessages = allMessages
       .filter((msg) => {

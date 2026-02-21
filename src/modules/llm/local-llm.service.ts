@@ -67,20 +67,12 @@ const WEB_TOOLS = [
   },
 ];
 
-/**
- * Injected before tool loop messages to reinforce English search behavior.
- * Small local models respond better to repeated, concrete instructions.
- */
 const TOOL_SYSTEM_REMINDER =
   'When using web_search, always write queries in English. ' +
   'Do not answer questions about recent events from memory — ' +
   'use web_search first and base your answer strictly on the results returned. ' +
   'If search returns no results or results seem outdated, say so explicitly instead of guessing.';
 
-/**
- * Calls a local Ollama (or compatible) API to generate a reply.
- * Uses POST /api/chat with model, prompt, and optional system prompt.
- */
 @Injectable()
 export class LocalLlmService {
   private readonly logger = new Logger(LocalLlmService.name);
@@ -121,18 +113,12 @@ export class LocalLlmService {
     }
   }
 
-  /**
-   * Generates a reply with web_search and web_fetch tools (agent loop).
-   * Stops when the model returns no tool_calls or after MAX_TOOL_ITERATIONS.
-   */
   async generateChatReplyWithTools(
     systemPrompt: string,
     messages: ChatMessage[],
   ): Promise<string> {
     const url = `${this.baseUrl}/api/chat`;
 
-    // Append tool behavior reminder to system prompt so it applies for the
-    // whole conversation, not just the first turn.
     const enrichedSystemPrompt = `${systemPrompt}\n\n${TOOL_SYSTEM_REMINDER}`;
 
     const fullMessages: (ChatMessage & { tool_name?: string })[] = [
@@ -149,8 +135,8 @@ export class LocalLlmService {
         stream: false,
         tools: WEB_TOOLS,
         options: {
-          temperature: 0.3, // Lower temperature for more reliable tool-calling JSON
-          num_ctx: 12288,   // Force a 12k context window (uses about 1-2GB extra VRAM)
+          temperature: 0.3,
+          num_ctx: 12288,
         },
       };
 
@@ -174,7 +160,6 @@ export class LocalLlmService {
         const bodyErr = axiosErr?.response?.data;
         const errMsg = axiosErr?.message || String(err);
 
-        // If first iteration with system role gave 400, fall back to user role
         if (iterations === 1 && status === 400) {
           this.logger.warn(
             `Ollama rejected system role with tools, falling back to user role. Error: ${JSON.stringify(bodyErr)}`,
@@ -233,7 +218,6 @@ export class LocalLlmService {
         if (name === 'web_search') {
           const query = String(args.query ?? '').trim() || 'general';
           const maxResults = typeof args.max_results === 'number' ? args.max_results : 5;
-          // Log the actual query so we can verify English enforcement in debug
           this.logger.debug(`web_search called with query: "${query}"`);
           content = await this.ollamaWebSearch.webSearch(query, maxResults);
         } else if (name === 'web_fetch') {

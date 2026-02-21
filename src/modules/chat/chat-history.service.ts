@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ChatMessage } from './entities/chat-message.entity';
-import { EmbeddingService } from './embedding.service';
-import { QdrantService } from './qdrant.service';
+import { EmbeddingService } from '../vector-store/embedding.service';
+import { QdrantService } from '../vector-store/qdrant.service';
 
 const DEFAULT_CHUNK_SIZE = 8;
 
@@ -25,9 +25,6 @@ export class ChatHistoryService {
       DEFAULT_CHUNK_SIZE;
   }
 
-  /**
-   * Сохраняет сообщение в БД.
-   */
   async saveMessage(
     chatId: string | number,
     content: string,
@@ -43,32 +40,24 @@ export class ChatHistoryService {
     await this.chatRepo.save(msg);
   }
 
-  /**
-   * Возвращает последние сообщения в виде массива объектов.
-   * Это именно то, что нужно для Chat API (messages: []).
-   */
   async getRecentMessages(chatId: string | number, limit: number) {
     const messages = await this.chatRepo.find({
       where: { chat_id: String(chatId) },
-      order: { created_at: 'DESC' }, // Берем самые свежие
+      order: { created_at: 'DESC' },
       take: limit,
     });
 
     if (messages.length === 0) return [];
 
-    // Разворачиваем, чтобы история шла от старых к новым (хронологически)
     return messages.reverse().map((m) => ({
       id: m.id,
-      role: m.role, // 'user' или 'assistant'
+      role: m.role,
       content: m.content,
-      username: m.sender_username, // Передаем имя, чтобы ReplyService мог его склеить с текстом
+      username: m.sender_username,
       created_at: m.created_at,
     }));
   }
 
-  /**
-   * Получает сообщения по их IDs из БД.
-   */
   async getMessagesByIds(messageIds: number[]): Promise<
     Array<{
       id: number;
@@ -96,9 +85,6 @@ export class ChatHistoryService {
     }));
   }
 
-  /**
-   * Старый метод для обратной совместимости (если где-то еще нужен текст строкой)
-   */
   async getRecentContextString(chatId: string | number, limit: number): Promise<string> {
     const history = await this.getRecentMessages(chatId, limit);
     return history
@@ -106,11 +92,6 @@ export class ChatHistoryService {
       .join('\n');
   }
 
-  /**
-   * Creates chunks from recent messages and stores them in Qdrant.
-   * Groups messages into chunks of chunkSize (default 8) and generates embeddings.
-   * This should be called after saving new messages if RAG is enabled.
-   */
   async createChunksFromRecentMessages(
     chatId: string | number,
     windowSize?: number,
@@ -123,22 +104,18 @@ export class ChatHistoryService {
     const chatIdStr = String(chatId);
 
     try {
-      // Get recent messages that might need chunking
-      // We'll process messages in batches, starting from the most recent
       const messages = await this.chatRepo.find({
         where: { chat_id: chatIdStr },
         order: { created_at: 'DESC' },
-        take: size * 3, // Process up to 3 chunks worth
+        take: size * 3,
       });
 
       if (messages.length === 0) {
         return;
       }
 
-      // Reverse to get chronological order (oldest first)
       messages.reverse();
 
-      // Group into chunks
       const chunks: ChatMessage[][] = [];
       for (let i = 0; i < messages.length; i += size) {
         const chunk = messages.slice(i, i + size);
@@ -147,7 +124,6 @@ export class ChatHistoryService {
         }
       }
 
-      // Process each chunk
       for (const chunk of chunks) {
         await this.processChunk(chatIdStr, chunk);
       }
@@ -156,13 +132,9 @@ export class ChatHistoryService {
         `Failed to create chunks for chat ${chatIdStr}:`,
         err instanceof Error ? err.message : String(err),
       );
-      // Don't throw - chunking failure shouldn't break message saving
     }
   }
 
-  /**
-   * Processes a single chunk: generates embedding and stores in Qdrant.
-   */
   private async processChunk(
     chatId: string,
     messages: ChatMessage[],
@@ -171,7 +143,6 @@ export class ChatHistoryService {
       return;
     }
 
-    // Build chunk text: "username: content\nusername: content..."
     const chunkText = messages
       .map((m) => {
         const username =
@@ -188,13 +159,11 @@ export class ChatHistoryService {
           .filter((u): u is string => u !== null),
       ),
     ];
-    const createdAt = messages[messages.length - 1].created_at; // Use last message's timestamp
+    const createdAt = messages[messages.length - 1].created_at;
 
     try {
-      // Generate embedding
       const vector = await this.embeddingService.generateEmbedding(chunkText);
 
-      // Store in Qdrant
       await this.qdrantService.storeChunk(
         chatId,
         messageIds,

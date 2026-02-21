@@ -90,7 +90,6 @@ export class QdrantService implements OnModuleInit {
       );
     }
 
-    // Generate point ID: use UUID for better compatibility
     const pointId = randomUUID();
 
     try {
@@ -114,7 +113,6 @@ export class QdrantService implements OnModuleInit {
         `Stored chunk in Qdrant: ${chatId}, ${messageIds.length} messages, ID: ${pointId}`,
       );
     } catch (err) {
-      // Enhanced error logging to see Qdrant's response details
       let errorMsg = err instanceof Error ? err.message : String(err);
       if (err && typeof err === 'object' && 'response' in err) {
         const response = (err as any).response;
@@ -126,14 +124,12 @@ export class QdrantService implements OnModuleInit {
         }
       }
       this.logger.error(`Failed to store chunk in Qdrant: ${errorMsg}`);
-      this.logger.debug(`Payload: ${JSON.stringify({ chat_id: chatId, message_ids: messageIds, chunk_text_length: chunkText.length })}`);
       throw new Error(`Qdrant upsert failed: ${errorMsg}`);
     }
   }
 
   /**
    * Searches for similar chunks by embedding vector.
-   * Returns chunks sorted by relevance (score descending).
    */
   async searchSimilar(
     chatId: string,
@@ -172,7 +168,6 @@ export class QdrantService implements OnModuleInit {
         };
       });
     } catch (err) {
-      // Enhanced error logging
       let errorMsg = err instanceof Error ? err.message : String(err);
       if (err && typeof err === 'object' && 'response' in err) {
         const response = (err as any).response;

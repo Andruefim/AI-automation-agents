@@ -1,12 +1,12 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ReplyWithContextService } from './reply-with-context.service';
+import { ReplyWithContextService } from '../context/reply-with-context.service';
 
-@Controller('telegram-cursor')
-export class TelegramCursorBridgeController {
+@Controller('telegram')
+export class TelegramController {
   constructor(private readonly replyWithContext: ReplyWithContextService) {}
 
   /**
-   * Manually get a reply from the local LLM (with optional chat history via MCP).
+   * Manually get a reply from the local LLM (with optional chat history).
    * Body: { "messageContext": "user message", "chatId"?: number, "username"?: string }
    */
   @Post('trigger')

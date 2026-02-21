@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { TelegramCursorBridgeModule } from './telegram-cursor-bridge/telegram-cursor-bridge.module';
+import { TelegramModule } from './modules/telegram/telegram.module';
 
 @Module({
   imports: [
@@ -16,7 +16,7 @@ import { TelegramCursorBridgeModule } from './telegram-cursor-bridge/telegram-cu
       autoLoadEntities: true,
       synchronize: true,
     }),
-    TelegramCursorBridgeModule,
+    TelegramModule,
   ],
   controllers: [AppController],
   providers: [AppService],

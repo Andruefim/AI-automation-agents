@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Telegraf, Context } from 'telegraf';
-import { ReplyWithContextService } from './reply-with-context.service';
+import { ReplyWithContextService } from '../context/reply-with-context.service';
 
 const TRIGGER_ONLY_WHEN_MENTIONED = process.env.TELEGRAM_TRIGGER_ON_MENTION === 'true';
 
@@ -14,7 +14,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) {
       console.warn(
-        '[TelegramCursorBridge] TELEGRAM_BOT_TOKEN not set; Telegram bot will not start.',
+        '[Telegram] TELEGRAM_BOT_TOKEN not set; Telegram bot will not start.',
       );
       return;
     }
@@ -29,8 +29,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         const username = from?.username ? `@${from.username}` : from?.first_name ?? 'Unknown';
         const chat = ctx.chat;
 
-        // In groups: if TELEGRAM_TRIGGER_ON_MENTION=true, only react when the bot is @mentioned or text contains "андроид", "дрон", "антон".
-        // In private chat: always react to every message.
         const isPrivate = chat?.type === 'private';
         if (!isPrivate && TRIGGER_ONLY_WHEN_MENTIONED) {
           const me = await ctx.telegram.getMe();
@@ -38,7 +36,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           const mentioned = botUsername && text.includes(botUsername);
           const hasTriggerWord = /(андроид|дрон|антон)/i.test(text);
           if (!mentioned && !hasTriggerWord) {
-            // Save message to history so when bot is triggered later it has full chat context
             await this.replyWithContext.saveIncomingMessage(chat?.id ?? 0, text, username).catch(() => {});
             return;
           }
@@ -54,19 +51,18 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[TelegramCursorBridge] Error handling message:', msg);
+        console.error('[Telegram] Error handling message:', msg);
         await ctx.reply(`Error: ${msg}`).catch(() => {});
       }
     });
 
-    // If a webhook was set (e.g. by another app), getUpdates won't get messages. Remove it.
     try {
       await this.bot.telegram.deleteWebhook({ drop_pending_updates: false });
       await this.bot.launch();
-      console.log('[TelegramCursorBridge] Telegram bot started.');
+      console.log('[Telegram] Telegram bot started.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[TelegramCursorBridge] Failed to start bot:', msg);
+      console.error('[Telegram] Failed to start bot:', msg);
       this.bot = null;
     }
   }
@@ -75,7 +71,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     if (this.bot) {
       this.bot.stop('shutdown');
       this.bot = null;
-      console.log('[TelegramCursorBridge] Telegram bot stopped.');
+      console.log('[Telegram] Telegram bot stopped.');
     }
   }
 }

@@ -8,13 +8,11 @@ const DEFAULT_CACHE_TTL_SEC = 300;
 const DEFAULT_MAX_CACHE_ENTRIES = 150;
 const REQUEST_TIMEOUT_MS = 30000;
 
-// Common words that appear everywhere and add noise to relevance scoring
 const STOP_WORDS = new Set([
   'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
   'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'be', 'been',
   'has', 'have', 'had', 'do', 'did', 'will', 'would', 'can', 'could',
   'that', 'this', 'it', 'its', 'as', 'up', 'out', 'if', 'about', 'into',
-  // Russian stop words
   'и', 'в', 'на', 'с', 'по', 'за', 'к', 'о', 'у', 'из', 'от', 'до',
   'не', 'что', 'как', 'но', 'а', 'или', 'же', 'ли', 'бы', 'то', 'это',
   'он', 'она', 'они', 'мы', 'вы', 'я', 'ты', 'его', 'её', 'их', 'нет',
@@ -65,7 +63,6 @@ export class OllamaWebSearchService {
       ? Math.max(100, parseInt(snippetLimit, 10))
       : DEFAULT_MAX_SNIPPET_LENGTH;
 
-    // Reranking is ON by default; set RERANK_WEB_SEARCH=false to disable
     this.rerank = process.env.RERANK_WEB_SEARCH !== 'false';
 
     const ttl = process.env.WEB_SEARCH_CACHE_TTL_SEC;
@@ -81,12 +78,6 @@ export class OllamaWebSearchService {
     return Boolean(this.apiKey);
   }
 
-  /**
-   * Performs a web search via Ollama Cloud API.
-   * Returns formatted string for tool message content.
-   *
-   * Pipeline: normalize → cache check → API call → dedup → rerank → truncate by full snippets → cache set
-   */
   async webSearch(query: string, maxResults: number = 5): Promise<string> {
     if (!this.apiKey) {
       this.logger.warn('OLLAMA_API_KEY not set; web search skipped.');
@@ -117,7 +108,6 @@ export class OllamaWebSearchService {
 
       const results = data.results ?? [];
 
-      // Empty results guard — never let the model answer from memory
       if (results.length === 0) {
         this.logger.warn(`Web search returned 0 results for: "${normalizedQuery}"`);
         const noResults =
@@ -127,7 +117,6 @@ export class OllamaWebSearchService {
         return noResults;
       }
 
-      // Deduplicate by normalized URL
       const seen = new Set<string>();
       const unique = results.filter((r) => {
         const key = this.normalizeUrl(r.url);
@@ -136,7 +125,6 @@ export class OllamaWebSearchService {
         return true;
       });
 
-      // Optional reranking by query term overlap
       const ranked = this.rerank ? this.rerankResults(unique, normalizedQuery) : unique;
 
       this.logger.debug(
@@ -144,7 +132,6 @@ export class OllamaWebSearchService {
         `${unique.length} after dedup, rerank=${this.rerank}`,
       );
 
-      // Build output from complete snippets up to maxContentLength
       const searchDate = new Date().toISOString().split('T')[0];
       const header = `[Search date: ${searchDate}. Answer strictly from the results below.]\n\n`;
       const result = this.buildFromSnippets(ranked, header);
@@ -158,10 +145,6 @@ export class OllamaWebSearchService {
     }
   }
 
-  /**
-   * Fetches a single page via Ollama Cloud API.
-   * Returns title + content as string (truncated).
-   */
   async webFetch(url: string): Promise<string> {
     if (!this.apiKey) {
       this.logger.warn('OLLAMA_API_KEY not set; web fetch skipped.');
@@ -203,14 +186,6 @@ export class OllamaWebSearchService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Builds the final string from complete snippets only, never cutting mid-snippet.
-   * Applies per-snippet content cap before accumulating.
-   */
   private buildFromSnippets(results: WebSearchResult[], header: string): string {
     const budget = this.maxContentLength - header.length;
     const separator = '\n\n';
@@ -223,7 +198,7 @@ export class OllamaWebSearchService {
       const addition = (used === 0 ? '' : separator) + snippet;
       if (used + addition.length > budget) {
         dropped++;
-        continue; // Skip — don't cut
+        continue;
       }
       accumulated += addition;
       used += addition.length;
@@ -233,17 +208,9 @@ export class OllamaWebSearchService {
       accumulated += `\n[... ${dropped} result(s) dropped due to length limit]`;
     }
 
-    this.logger.debug(
-      `Built search output: ${results.length - dropped}/${results.length} snippets used, ` +
-      `${used} chars (budget: ${budget})`,
-    );
-
     return header + accumulated;
   }
 
-  /**
-   * Formats a single search result, capping content at maxSnippetLength.
-   */
   private formatSnippet(r: WebSearchResult): string {
     const content = (r.content || '').trim();
     const capped =
@@ -253,10 +220,6 @@ export class OllamaWebSearchService {
     return `[${r.title}](${r.url})\n${capped}`;
   }
 
-  /**
-   * Scores results by query term overlap (ignoring stop words and short tokens).
-   * Stable sort — ties preserve original API order.
-   */
   private rerankResults(results: WebSearchResult[], query: string): WebSearchResult[] {
     const terms = query
       .toLowerCase()
@@ -275,12 +238,10 @@ export class OllamaWebSearchService {
     return scored.map((s) => s.r);
   }
 
-  /** Trim, collapse internal spaces, lowercase for cache key consistency. */
   private normalizeQuery(query: string): string {
     return query.trim().replace(/\s+/g, ' ');
   }
 
-  /** Lowercase + strip trailing slash. Avoids over-aggressive www stripping. */
   private normalizeUrl(url: string): string {
     return url.trim().toLowerCase().replace(/\/+$/, '');
   }
@@ -289,10 +250,6 @@ export class OllamaWebSearchService {
     if (text.length <= this.maxContentLength) return text;
     return text.slice(0, this.maxContentLength) + '\n[... обрезано]';
   }
-
-  // ---------------------------------------------------------------------------
-  // TTL cache with max-size eviction (oldest-first)
-  // ---------------------------------------------------------------------------
 
   private cacheGet(key: string): string | null {
     if (this.cacheTtlMs === 0) return null;
@@ -308,7 +265,6 @@ export class OllamaWebSearchService {
   private cacheSet(key: string, value: string): void {
     if (this.cacheTtlMs === 0) return;
 
-    // Evict oldest entry if at capacity
     if (this.cache.size >= this.maxCacheEntries && !this.cache.has(key)) {
       const oldestKey = this.cache.keys().next().value;
       if (oldestKey !== undefined) {
