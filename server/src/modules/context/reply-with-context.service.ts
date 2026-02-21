@@ -96,7 +96,7 @@ export class ReplyWithContextService {
     let lastUserContent = `${username ?? 'User'}: ${newMessageText}`;
 
     if (ENABLE_WEB_TOOLS && wantsWebSearch(newMessageText)) {
-      lastUserContent += `\n\n[Примечание: Используй web_search для проверки актуальных данных за 2026 год]`;
+      lastUserContent += `\n\n[Примечание: Используй web_search для проверки актуальных данных]`;
     }
 
     messages.push({ role: 'user', content: lastUserContent });
