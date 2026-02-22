@@ -1,6 +1,7 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { QueryFailedError } from 'typeorm';
 import { ChatGroup } from '../platform/entities/chat-group.entity';
 import { PlatformBot } from '../platform/entities/platform-bot.entity';
 
@@ -66,13 +67,30 @@ export class GroupsService {
       }
       return group;
     }
-    group = this.groupRepo.create({
-      botId,
-      telegramChatId,
-      title,
-      ownerPlatformUserId,
-    });
-    await this.groupRepo.save(group);
-    return group;
+    try {
+      group = this.groupRepo.create({
+        botId,
+        telegramChatId,
+        title,
+        ownerPlatformUserId,
+      });
+      await this.groupRepo.save(group);
+      return group;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Duplicate entry')) {
+        const existing = await this.groupRepo.findOne({
+          where: { botId, telegramChatId },
+        });
+        if (existing) {
+          if (title !== null && existing.title !== title) {
+            existing.title = title;
+            await this.groupRepo.save(existing);
+          }
+          return existing;
+        }
+      }
+      throw err;
+    }
   }
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from './UI';
+import { useAuth } from '../context/useAuth';
 import styles from './Nav.module.css';
 
 interface NavProps {
@@ -10,6 +11,7 @@ interface NavProps {
 export const Nav: React.FC<NavProps> = ({ variant = 'landing' }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   if (variant === 'dashboard') {
     const links = [
@@ -35,9 +37,19 @@ export const Nav: React.FC<NavProps> = ({ variant = 'landing' }) => {
             ))}
           </div>
         </div>
-        <div className={styles.userChip} onClick={() => navigate('/')}>
-          <div className={styles.userAv}>A</div>
-          <span>alex@example.com</span>
+        <div className={styles.userChip}>
+          <div className={styles.userAv}>{user?.email?.[0]?.toUpperCase() ?? '?'}</div>
+          <span>{user?.email ?? 'User'}</span>
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
+          >
+            Logout
+          </button>
         </div>
       </nav>
     );

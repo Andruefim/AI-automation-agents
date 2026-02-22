@@ -11,6 +11,10 @@
 .header h2 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 .header p  { font-size: 13px; color: var(--muted); margin-top: 3px; }
 
+.error { font-size: 13px; color: var(--red); margin-bottom: 16px; }
+.retry { margin-left: 8px; color: var(--accent); cursor: pointer; text-decoration: underline; background: none; border: none; font-size: inherit; }
+.loading { display: flex; align-items: center; gap: 12px; padding: 24px; color: var(--muted); font-size: 14px; }
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(295px, 1fr));

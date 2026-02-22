@@ -33,7 +33,7 @@ npm run start:dev
 ```
 
 - The Telegram bot starts with the app. When someone messages the bot (or mentions it), the app gets a reply from the local model and sends it back.
-- **Manual trigger**: `POST http://localhost:3000/telegram/trigger` with body:  
+- **Manual trigger**: `POST http://localhost:3001/telegram/trigger` with body:  
   `{ "messageContext": "user message", "chatId"?: number, "username"?: string }`  
   Returns `{ "reply": "..." }`.
 

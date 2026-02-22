@@ -1,26 +1,79 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Nav } from '../../shared/components/Nav';
-import { Card, Badge, Toggle, Button, OrbBg } from '../../shared/components/UI';
+import { Card, Badge, Toggle, Button, OrbBg, Spinner } from '../../shared/components/UI';
+import { useGroup } from './hooks/useGroup';
 import styles from './Group.module.css';
-
-const MEMBERS = [
-  { name: 'Alex',   handle: '@alex_dev', linked: true  },
-  { name: 'Maria',  handle: '@maria_k',  linked: true  },
-  { name: 'Denis',  handle: '@denis99',  linked: true  },
-  { name: 'Sergey', handle: '@sr_dev',   linked: false },
-  { name: 'Natasha',handle: '@nat_pm',   linked: false },
-];
 
 const BARS = [35, 55, 70, 100, 60, 45, 30];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const Group: React.FC = () => {
   const navigate = useNavigate();
-  const [digest,     setDigest]     = useState(true);
-  const [reminders,  setReminders]  = useState(true);
-  const [webSearch,  setWebSearch]  = useState(false);
-  const [frequency,  setFrequency]  = useState('daily-9am');
+  const { group, loading, error, updateSettings } = useGroup();
+
+  const settings = group?.settingsJson ?? {};
+  const digest = settings.digestEnabled !== false;
+  const reminders = settings.remindersEnabled !== false;
+  const webSearch = settings.webSearchEnabled === true;
+  const frequency = (settings.digestFrequency as string) ?? 'daily-9am';
+
+  const setDigest = useCallback(
+    (on: boolean) => updateSettings({ digestEnabled: on }),
+    [updateSettings],
+  );
+  const setReminders = useCallback(
+    (on: boolean) => updateSettings({ remindersEnabled: on }),
+    [updateSettings],
+  );
+  const setWebSearch = useCallback(
+    (on: boolean) => updateSettings({ webSearchEnabled: on }),
+    [updateSettings],
+  );
+  const setFrequency = useCallback(
+    (value: string) => updateSettings({ digestFrequency: value }),
+    [updateSettings],
+  );
+
+  const title = group?.title ?? 'Unnamed group';
+  const botHandle = group?.bot?.botUsername ? `@${group.bot.botUsername}` : '—';
+  const createdAt = group?.createdAt
+    ? new Date(group.createdAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '';
+
+  if (loading) {
+    return (
+      <div className={styles.page}>
+        <OrbBg />
+        <Nav variant="dashboard" />
+        <div className={styles.body}>
+          <div className={styles.loading}>
+            <Spinner size={24} />
+            <span>Loading group…</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !group) {
+    return (
+      <div className={styles.page}>
+        <OrbBg />
+        <Nav variant="dashboard" />
+        <div className={styles.body}>
+          <p className={styles.error}>{error ?? 'Group not found.'}</p>
+          <button className={styles.back} onClick={() => navigate('/dashboard')}>
+            ← All groups
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>
@@ -31,27 +84,31 @@ export const Group: React.FC = () => {
           ← All groups
         </button>
 
-        {/* hero */}
         <div className={styles.hero}>
           <div className={styles.heroIcon}>💻</div>
           <div className={styles.heroInfo}>
-            <h2>Dev Team</h2>
-            <p>@devteam_slediq_bot · Connected Jan 12, 2025</p>
+            <h2>{title}</h2>
+            <p>
+              {botHandle} {createdAt && `· Connected ${createdAt}`}
+            </p>
           </div>
           <div className={styles.heroBadges}>
-            <Badge color="green" dot>Active</Badge>
-            <Button variant="ghost" size="sm">⚙ Settings</Button>
+            <Badge color="green" dot>
+              Active
+            </Badge>
+            <Button variant="ghost" size="sm">
+              ⚙ Settings
+            </Button>
           </div>
         </div>
 
         <div className={styles.grid}>
-          {/* left column */}
           <div>
             <p className={styles.sectionTitle}>Overview</p>
             <div className={styles.statsRow}>
-              <StatCard val="14,218" label="Total messages"  delta="↑ +340 this week" />
-              <StatCard val="341"    label="Bot queries"     delta="↑ +28 this week" />
-              <StatCard val="8"      label="Members"         delta="5 linked accounts" dimDelta />
+              <StatCard val="—" label="Total messages" delta="—" dimDelta />
+              <StatCard val="—" label="Bot queries" delta="—" dimDelta />
+              <StatCard val="—" label="Members" delta="—" dimDelta />
             </div>
 
             <Card className={styles.chartCard}>
@@ -69,12 +126,15 @@ export const Group: React.FC = () => {
                 ))}
               </div>
               <div className={styles.chartLabels}>
-                {DAYS.map(d => <span key={d} className={styles.chartLabel}>{d}</span>)}
+                {DAYS.map(d => (
+                  <span key={d} className={styles.chartLabel}>
+                    {d}
+                  </span>
+                ))}
               </div>
             </Card>
           </div>
 
-          {/* right column */}
           <div className={styles.sidePanel}>
             <p className={styles.sectionTitle}>Settings</p>
 
@@ -120,28 +180,20 @@ export const Group: React.FC = () => {
               </p>
             </Card>
 
-            <p className={styles.sectionTitle} style={{ marginTop: 8 }}>Members</p>
+            <p className={styles.sectionTitle} style={{ marginTop: 8 }}>
+              Members
+            </p>
 
             <div className={styles.linkBanner}>
               <span className={styles.linkBannerIcon}>🔗</span>
               <div>
-                <strong>3 members not linked</strong>
-                <p>Share slediq.io/link so they can connect accounts and use private chat.</p>
+                <strong>Link your account</strong>
+                <p>Share slediq.io/link so members can connect accounts and use private chat.</p>
               </div>
             </div>
 
             <Card className={styles.membersCard}>
-              {MEMBERS.map(m => (
-                <div key={m.handle} className={styles.memberRow}>
-                  <div className={styles.mAv}>{m.name[0]}</div>
-                  <div className={styles.mName}>
-                    {m.name} <span className={styles.mHandle}>{m.handle}</span>
-                  </div>
-                  <span className={m.linked ? styles.linked : styles.unlinked}>
-                    {m.linked ? 'linked' : 'not linked'}
-                  </span>
-                </div>
-              ))}
+              <p className={styles.muted}>Member list from Telegram (coming soon)</p>
             </Card>
           </div>
         </div>
@@ -150,8 +202,12 @@ export const Group: React.FC = () => {
   );
 };
 
-// ── sub ──────────────────────────────────────────────────────
-const StatCard: React.FC<{ val: string; label: string; delta: string; dimDelta?: boolean }> = ({ val, label, delta, dimDelta }) => (
+const StatCard: React.FC<{
+  val: string;
+  label: string;
+  delta: string;
+  dimDelta?: boolean;
+}> = ({ val, label, delta, dimDelta }) => (
   <Card className={styles.statCard}>
     <span className={styles.sv}>{val}</span>
     <span className={styles.sl}>{label}</span>

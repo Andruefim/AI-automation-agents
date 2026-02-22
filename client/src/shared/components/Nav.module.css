@@ -55,6 +55,18 @@
   transition: background 0.15s;
 }
 .userChip:hover { background: var(--glass-h); }
+.logoutBtn {
+  margin-left: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.logoutBtn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 .userAv {
   width: 26px;
   height: 26px;
