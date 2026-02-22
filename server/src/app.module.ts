@@ -2,6 +2,10 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PlatformModule } from './modules/platform/platform.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { BotsModule } from './modules/bots/bots.module';
+import { GroupsModule } from './modules/groups/groups.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 
 @Module({
@@ -16,6 +20,10 @@ import { TelegramModule } from './modules/telegram/telegram.module';
       autoLoadEntities: true,
       synchronize: true,
     }),
+    PlatformModule,
+    AuthModule,
+    BotsModule,
+    GroupsModule,
     TelegramModule,
   ],
   controllers: [AppController],

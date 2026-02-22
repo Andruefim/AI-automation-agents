@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { LocalLlmService } from '../llm/local-llm.service';
 import { ChatHistoryService } from '../chat/chat-history.service';
 import { EmbeddingService } from '../vector-store/embedding.service';
-import { QdrantService } from '../vector-store/qdrant.service';
+import { QdrantService, groupCollectionName } from '../vector-store/qdrant.service';
 
 const DEFAULT_HISTORY_LIMIT = 20;
 const ENABLE_WEB_TOOLS = process.env.ENABLE_WEB_TOOLS === 'true';
@@ -50,12 +50,12 @@ export class ReplyWithContextService {
     this.historyLimit = limit ? Math.max(1, parseInt(limit, 10)) : DEFAULT_HISTORY_LIMIT;
   }
 
-  async saveIncomingMessage(chatId: string | number, text: string, username?: string): Promise<void> {
-    await this.chatHistory.saveMessage(chatId, text, 'user', username);
+  async saveIncomingMessage(chatGroupId: number, text: string, username?: string): Promise<void> {
+    await this.chatHistory.saveMessage(chatGroupId, text, 'user', username);
 
     if (ENABLE_RAG && this.embeddingService.isConfigured()) {
       this.chatHistory
-        .createChunksFromRecentMessages(chatId)
+        .createChunksFromRecentMessages(chatGroupId)
         .catch((err) => {
           this.logger.error('Failed to index incoming message for RAG:', err);
         });
@@ -63,26 +63,24 @@ export class ReplyWithContextService {
   }
 
   async getReplyForMessage(
-    chatId: string | number,
+    chatGroupId: number,
     newMessageText: string,
     username?: string,
   ): Promise<string | null> {
     if (!this.localLlm.isConfigured()) return 'Ошибка: LLM не настроена.';
 
-    const chatIdStr = String(chatId);
-
     let rawHistory: { role: "assistant" | "user"; content: string; username: string | null; }[] = [];
 
     if (ENABLE_RAG && this.embeddingService.isConfigured()) {
       try {
-        rawHistory = await this.getHybridHistory(chatIdStr, newMessageText);
+        rawHistory = await this.getHybridHistory(chatGroupId, newMessageText);
       } catch (err) {
         this.logger.error('Ошибка гибридного поиска истории, fallback на обычный:', err);
-        rawHistory = await this.chatHistory.getRecentMessages(chatId, RAG_RECENT_MESSAGES);
+        rawHistory = await this.chatHistory.getRecentMessages(chatGroupId, RAG_RECENT_MESSAGES);
       }
     } else {
       try {
-        rawHistory = await this.chatHistory.getRecentMessages(chatId, this.historyLimit);
+        rawHistory = await this.chatHistory.getRecentMessages(chatGroupId, this.historyLimit);
       } catch (err) {
         this.logger.error('Ошибка получения истории:', err);
       }
@@ -110,12 +108,12 @@ export class ReplyWithContextService {
 
       const output = reply?.trim() || '(Модель промолчала)';
 
-      await this.chatHistory.saveMessage(chatId, newMessageText, 'user', username);
-      await this.chatHistory.saveMessage(chatId, output, 'assistant');
+      await this.chatHistory.saveMessage(chatGroupId, newMessageText, 'user', username);
+      await this.chatHistory.saveMessage(chatGroupId, output, 'assistant');
 
       if (ENABLE_RAG && this.embeddingService.isConfigured()) {
         this.chatHistory
-          .createChunksFromRecentMessages(chatId)
+          .createChunksFromRecentMessages(chatGroupId)
           .catch((err) => {
             this.logger.error('Failed to index messages for RAG:', err);
           });
@@ -129,13 +127,13 @@ export class ReplyWithContextService {
   }
 
   private async getHybridHistory(
-    chatId: string,
+    chatGroupId: number,
     queryText: string,
   ): Promise<
     Array<{ role: 'assistant' | 'user'; content: string; username: string | null }>
   > {
     const recentMessages = await this.chatHistory.getRecentMessages(
-      chatId,
+      chatGroupId,
       RAG_RECENT_MESSAGES,
     );
 
@@ -149,8 +147,9 @@ export class ReplyWithContextService {
 
     try {
       const queryVector = await this.embeddingService.generateEmbedding(queryText);
+      const collectionName = groupCollectionName(chatGroupId);
       relevantChunks = await this.qdrantService.searchSimilar(
-        chatId,
+        collectionName,
         queryVector,
         RAG_SIMILAR_LIMIT,
       );
