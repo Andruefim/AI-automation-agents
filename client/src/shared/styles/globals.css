@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
+
+:root {
+  --bg:       #07090f;
+  --bg2:      #0c0f1a;
+  --bg3:      #111726;
+  --glass:    rgba(255, 255, 255, 0.04);
+  --glass-b:  rgba(255, 255, 255, 0.07);
+  --glass-h:  rgba(255, 255, 255, 0.08);
+  --accent:   #4f8ef7;
+  --accent2:  #7b6cf6;
+  --glow:     rgba(79, 142, 247, 0.22);
+  --text:     #eef2ff;
+  --muted:    #7d8599;
+  --dim:      #343b52;
+  --green:    #34d399;
+  --red:      #f87171;
+  --radius:   14px;
+  --r-sm:     9px;
+  --r-xs:     6px;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: 'Syne', sans-serif;
+}
+
+a { text-decoration: none; color: inherit; }
+
+button { font-family: 'DM Sans', sans-serif; }
+
+input, select, textarea {
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }

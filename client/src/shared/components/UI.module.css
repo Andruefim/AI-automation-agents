@@ -1,0 +1,198 @@
+/* ── Button ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  transition: all 0.18s ease;
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+}
+
+.btn-sm  { padding: 6px 14px;  font-size: 12px; border-radius: 7px; }
+.btn-md  { padding: 9px 20px;  font-size: 14px; }
+.btn-lg  { padding: 13px 30px; font-size: 15px; border-radius: 12px; }
+.btn-block { width: 100%; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 24px var(--glow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #3d7ef5;
+  transform: translateY(-1px);
+  box-shadow: 0 0 36px var(--glow);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--glass-b);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--glass);
+  color: var(--text);
+}
+
+.btn-secondary {
+  background: var(--glass);
+  color: var(--text);
+  border: 1px solid var(--glass-b);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--glass-h);
+}
+
+.btn-danger {
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--red);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.18);
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Card ── */
+.card {
+  background: var(--glass);
+  border: 1px solid var(--glass-b);
+  border-radius: var(--radius);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.card-hover {
+  cursor: pointer;
+  transition: transform 0.18s, border-color 0.18s;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(79, 142, 247, 0.18);
+}
+
+/* ── Input ── */
+.input-group { display: flex; flex-direction: column; gap: 7px; }
+.input-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.input {
+  width: 100%;
+  padding: 11px 15px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--glass-b);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input:focus {
+  border-color: rgba(79, 142, 247, 0.45);
+  box-shadow: 0 0 0 3px rgba(79, 142, 247, 0.08);
+}
+.input::placeholder { color: var(--dim); }
+.input-error { border-color: rgba(248, 113, 113, 0.45) !important; }
+.input-err-msg { font-size: 11px; color: var(--red); }
+
+/* ── Toggle ── */
+.toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 100px;
+  background: var(--dim);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle-on { background: var(--accent); }
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+.toggle-on::after { transform: translateX(18px); }
+
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 100px;
+}
+.badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.badge-green {
+  color: var(--green);
+  background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.18);
+}
+.badge-green .badge-dot { background: var(--green); }
+.badge-blue {
+  color: var(--accent);
+  background: rgba(79, 142, 247, 0.09);
+  border: 1px solid rgba(79, 142, 247, 0.22);
+}
+.badge-blue .badge-dot { background: var(--accent); animation: blink 2s infinite; }
+.badge-dim {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-b);
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block;
+  border-radius: 50%;
+  border: 2px solid rgba(79, 142, 247, 0.2);
+  border-top-color: var(--accent);
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Orbs ── */
+.orb-1, .orb-2 {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
+.orb-1 {
+  width: 700px;
+  height: 700px;
+  background: rgba(79, 142, 247, 0.07);
+  top: -250px;
+  right: -180px;
+}
+.orb-2 {
+  width: 500px;
+  height: 500px;
+  background: rgba(123, 108, 246, 0.06);
+  bottom: -150px;
+  left: -200px;
+}

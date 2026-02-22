@@ -1,0 +1,80 @@
+.page { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+
+.body { padding: 36px 40px; flex: 1; position: relative; z-index: 1; }
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+.header h2 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.header p  { font-size: 13px; color: var(--muted); margin-top: 3px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(295px, 1fr));
+  gap: 14px;
+}
+
+/* ── group card ── */
+.gc {
+  padding: 22px;
+  cursor: pointer;
+  transition: transform 0.18s, border-color 0.18s;
+  position: relative;
+  overflow: hidden;
+}
+.gc::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.gc:hover { transform: translateY(-2px); border-color: rgba(79, 142, 247, 0.18); }
+.gc:hover::after { opacity: 1; }
+
+.gcTop { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.gcIcon {
+  width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0;
+  background: rgba(79, 142, 247, 0.09); border: 1px solid rgba(79, 142, 247, 0.18);
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+}
+.gcName { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+.gcBot  { font-size: 11px; color: var(--dim); }
+
+.gcStats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.stat {
+  text-align: center; padding: 10px 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+}
+.sv { font-family: 'Syne', sans-serif; font-size: 19px; font-weight: 700; }
+.sl { font-size: 10px; color: var(--dim); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.gcFoot {
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--glass-b);
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+/* ── add card ── */
+.addCard {
+  border: 1px dashed var(--dim);
+  border-radius: var(--radius);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 36px; cursor: pointer; gap: 10px;
+  transition: all 0.2s; color: var(--dim); min-height: 200px;
+}
+.addCard:hover { border-color: var(--accent); color: var(--accent); background: rgba(79, 142, 247, 0.03); }
+.plus { font-size: 28px; font-weight: 300; line-height: 1; }
+.addCard span:last-child { font-size: 13px; font-weight: 500; }
+
+@media (max-width: 640px) {
+  .body { padding: 24px 20px; }
+  .header { flex-direction: column; gap: 16px; }
+}
